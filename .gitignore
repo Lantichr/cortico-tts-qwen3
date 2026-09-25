@@ -1,0 +1,5 @@
+node_modules/
+out/
+*.obj
+*.exe
+launcher.ini
