@@ -135,12 +135,12 @@ int wmain(int argc, wchar_t **argv) {
     wchar_t server[MAX_PATH], model[MAX_PATH], codec[MAX_PATH], node[MAX_PATH], proxy[MAX_PATH], cuda[MAX_PATH],
         voices[MAX_PATH], voice[128], lang[64], alias[128];
     if (!require(L"server_exe", server, MAX_PATH) || !require(L"model", model, MAX_PATH) ||
-        !require(L"codec", codec, MAX_PATH) || !require(L"node", node, MAX_PATH) || !require(L"proxy", proxy, MAX_PATH)) {
+        !require(L"codec", codec, MAX_PATH) || !require(L"node", node, MAX_PATH) || !require(L"proxy", proxy, MAX_PATH) ||
+        !require(L"voice", voice, 128)) {
         return 1;
     }
     lstrcpynW(cuda, ini_get(L"cuda_bin", L""), MAX_PATH);
     lstrcpynW(voices, ini_get(L"voices_dir", L""), MAX_PATH);
-    lstrcpynW(voice, ini_get(L"voice", L"corhi"), 128);
     lstrcpynW(lang, ini_get(L"language", L"Chinese"), 64);
     lstrcpynW(alias, ini_get(L"alias", L"qwen3-tts-base"), 128);
     const wchar_t *tts_port = ini_get(L"tts_port", L"8080");

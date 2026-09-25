@@ -8,7 +8,7 @@
  * worlds.vtuber.ttsRuntimeDir 指的那个。
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,14 +50,56 @@ const serverExe = resolve(required('server-exe', 'qwentts 的 tts-server.exe'));
 const talker = resolve(required('talker', 'qwen-talker-*.gguf'));
 const codec = resolve(required('codec', 'qwen-tokenizer-*.gguf'));
 const voicesDir = resolve(required('voices-dir', '参考音频目录'));
-const voice = args.voice ?? 'corhi';
+const voice = required('voice', '声线名,与参考音频同名');
 const ttsPort = args['tts-port'] ?? '8080';
 const proxyPort = args['proxy-port'] ?? '8010';
 const language = args.language ?? 'Chinese';
 const alias = args.alias ?? 'qwen3-tts-base';
 const nodeExe = args.node ?? process.execPath;
 const cudaBin = typeof args['cuda-bin'] === 'string' ? args['cuda-bin'] : '';
-const vcvars = typeof args.vcvars === 'string' ? args.vcvars : 'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat';
+
+/**
+ * 找 vcvars64.bat。先问 vswhere(VS 2017 起自带,能认出任意版本与版本号目录),找不到
+ * 再扫约定位置。写死某个年份的路径在装了别的 Visual Studio 的机器上必然失败。
+ */
+function findVcvars() {
+  const pf86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
+  const vswhere = join(pf86, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
+  if (existsSync(vswhere)) {
+    try {
+      const out = execFileSync(
+        vswhere,
+        ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'],
+        { encoding: 'utf8' },
+      ).trim();
+      const first = out.split(/\r?\n/)[0]?.trim();
+      if (first) {
+        const p = join(first, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat');
+        if (existsSync(p)) return p;
+      }
+    } catch { /* 落到目录扫描 */ }
+  }
+  for (const root of [pf86, process.env.ProgramFiles ?? 'C:\\Program Files']) {
+    const vsRoot = join(root, 'Microsoft Visual Studio');
+    if (!existsSync(vsRoot)) continue;
+    for (const year of readdirSync(vsRoot)) {
+      if (!/^\d+$/.test(year)) continue;
+      const byYear = join(vsRoot, year);
+      for (const edition of readdirSync(byYear)) {
+        const p = join(byYear, edition, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat');
+        if (existsSync(p)) return p;
+      }
+    }
+  }
+  return null;
+}
+
+const vcvars = typeof args.vcvars === 'string' ? args.vcvars : findVcvars();
+if (!vcvars) {
+  console.error('找不到 vcvars64.bat。用 --vcvars 指路径,通常是');
+  console.error('  <Visual Studio 安装目录>\\VC\\Auxiliary\\Build\\vcvars64.bat');
+  process.exit(2);
+}
 
 for (const [label, p] of [['server-exe', serverExe], ['talker', talker], ['codec', codec]]) {
   if (!existsSync(p)) { console.error(`--${label} 不存在: ${p}`); process.exit(2); }

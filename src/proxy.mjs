@@ -13,16 +13,16 @@
  * 上游不可达时返回 502,让扩展按自己的重试逻辑处理。对齐路由固定 501:这个后端没有
  * 强制对齐模型,扩展据此把片内动作退回按字符比例估计。
  *
- * 环境变量(启动器会设好;手工跑时可用默认值):
+ * 环境变量(启动器会按 launcher.ini 设好;手工跑时自行指定):
  *   QWEN_TTS_URL          上游地址,默认 http://127.0.0.1:8080
  *   QWEN_TTS_PROXY_PORT   监听端口,默认 8010(要和 worlds.vtuber.ttsUrl 的端口一致)
  *   QWEN_TTS_VOICES_DIR   参考音频目录,默认 <本目录>/voices
- *   QWEN_TTS_VOICE        默认声线的名字,默认 corhi
+ *   QWEN_TTS_VOICE        声线名,必填。没有默认值:它是部署事实,猜错会静默用错声音
  *   QWEN_TTS_LANG         语言提示,默认 Chinese
  */
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,8 +30,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const LISTEN_PORT = Number(process.env.QWEN_TTS_PROXY_PORT ?? 8010);
 const UPSTREAM = (process.env.QWEN_TTS_URL ?? 'http://127.0.0.1:8080').replace(/\/$/, '');
 const LANGUAGE = process.env.QWEN_TTS_LANG ?? 'Chinese';
-const VOICE = process.env.QWEN_TTS_VOICE ?? 'corhi';
+const VOICE = process.env.QWEN_TTS_VOICE;
 const VOICES_DIR = process.env.QWEN_TTS_VOICES_DIR ?? join(HERE, 'voices');
+
+if (!VOICE) {
+  console.error('缺 QWEN_TTS_VOICE。声线名没有默认值,启动器会从 launcher.ini 的 voice 注入。');
+  console.error('手工运行时自行指定,例如: set QWEN_TTS_VOICE=myvoice && node proxy.mjs');
+  process.exit(2);
+}
 
 /**
  * 部署声明的那条声线:参考音频取声线库里的同名 wav,特征取本目录预抽取的 .spk/.rvq,
@@ -48,6 +54,12 @@ const DEFAULT_VOICE = {
 
 /** qwentts 认的采样参数;其余字段一律丢掉 */
 const PASSTHROUGH = ['seed', 'temperature', 'top_k', 'top_p', 'repetition_penalty', 'max_new_tokens'];
+
+if (!existsSync(DEFAULT_VOICE.wav)) {
+  console.error(`参考音频不存在:${DEFAULT_VOICE.wav}`);
+  console.error('声线名要与参考音频同名(去掉 .wav)。目录用 QWEN_TTS_VOICES_DIR 指定。');
+  process.exit(2);
+}
 
 const hashOf = (b64) => createHash('sha1').update(b64).digest('hex').slice(0, 8);
 /** 默认参考音频的内容哈希:扩展送来的 reference_audio 与它相等就走部署声明的那条声线 */
