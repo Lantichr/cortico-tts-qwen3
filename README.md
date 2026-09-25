@@ -1,7 +1,7 @@
 # cortico-tts-qwen3
 
 给 Cortico 的 vtuber World 换一个 TTS 后端:[qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp)
-的 Qwen3-TTS。实测流式 RTF 0.25–0.33(约 4 倍速),流式首字节 0.4–0.7 s。
+的 Qwen3-TTS。主流 20 系显卡实测流式 RTF 0.25–0.33(约 4 倍速),流式首字节 0.4–0.7 s。
 
 `src/` 是这套适配器的全部源码;`docs/deployment.md` 是从零部署的完整步骤。
 
@@ -43,15 +43,18 @@ llama-tts-server.exe(启动器,src/launcher)     │
 
 ```powershell
 node scripts/install.mjs `
-  --runtime   E:\Cortico-Data\runtimes\qwen3-tts `
-  --server-exe E:\Programs\qwentts.cpp\build\tts-server.exe `
-  --talker    E:\Cortico-Data\models\qwen3-tts\gguf\qwen-talker-1.7b-base-Q8_0.gguf `
-  --codec     E:\Cortico-Data\models\qwen3-tts\gguf\qwen-tokenizer-12hz-Q8_0.gguf `
-  --voices-dir E:\Cortico-Data\models\vtuber\voices `
-  --voice corhi
+  --runtime    <部署根>\runtimes\qwen3-tts `
+  --server-exe <源码根>\qwentts.cpp\build\tts-server.exe `
+  --talker     <权重目录>\qwen-talker-1.7b-base-Q8_0.gguf `
+  --codec      <权重目录>\qwen-tokenizer-12hz-Q8_0.gguf `
+  --voices-dir <部署根>\models\vtuber\voices `
+  --voice myvoice
 ```
 
-它会编译启动器、把两个进程与 `launcher.ini` 铺进运行时目录,再起一次冒烟(打一次
+`<...>` 是你要代入的路径,含义与取法见 `docs/deployment.md` 开头的那张表;
+`myvoice` 代指你的声线名,必须与参考音频同名。
+
+安装器会编译启动器、把两个进程与 `launcher.ini` 铺进运行时目录,再起一次冒烟(打一次
 `/health` 和一次合成)。装完把 Cortico 的 `worlds.vtuber.ttsRuntimeDir` 指向运行时目录、
 `worlds.vtuber.ttsUrl` 指向代理端口即可。
 
