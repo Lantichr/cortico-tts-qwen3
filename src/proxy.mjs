@@ -9,6 +9,9 @@
  *     按参考音频内容哈希注册成一条声线并缓存,同一份音频只抽取一次。
  *  3. 字段:扩展会发 cfg_value / inference_timesteps / max_steps 这类 VoxCPM2 专有字段,
  *     只挑 qwentts 认识的转发,免得它拒收。
+ *  4. 语气词:扩展把 VoxCPM2 的行内标记([laughing]、[sigh]……)当语音正文发出来,而 qwentts
+ *     没有对应机制 —— base 模型连 instructions 都拒收,标记只会被当字面文字念出来。转发前
+ *     剥掉,代价是笑声与叹息消失。
  *
  * 上游不可达时返回 502,让扩展按自己的重试逻辑处理。对齐路由固定 501:这个后端没有
  * 强制对齐模型,扩展据此把片内动作退回按字符比例估计。
@@ -167,6 +170,18 @@ function wavHeader(dataLength) {
   return h;
 }
 
+/**
+ * VoxCPM2 的行内语气词标记,形状是 ASCII 词或连字符词:[laughing]、[Question-ah]。
+ * 扩展只放行自己那张表,到这里还带方括号的就是标记;按形状认不必抄那份词表,也不会误伤
+ * 中文方括号或 [笑] 这类正文。
+ */
+const VOICE_TAG_RE = /\[[A-Za-z][A-Za-z-]{0,30}\]/g;
+
+/** 剥掉语气词标记,顺带收掉留下的一串空格。剥空说明这一段只有发声,没有话可说。 */
+function stripVoiceTags(text) {
+  return text.replace(VOICE_TAG_RE, '').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
 function buildUpstreamBody(incoming, voice, stream) {
   const body = {
     input: incoming.input,
@@ -237,6 +252,12 @@ createServer(async (req, res) => {
     return;
   }
 
+  const input = stripVoiceTags(incoming.input);
+  if (input.length === 0) {
+    fail(res, 400, 'input is empty after removing voice tags');
+    return;
+  }
+
   let voice;
   try {
     voice = await voiceFor(incoming);
@@ -250,7 +271,7 @@ createServer(async (req, res) => {
     upstream = await fetch(`${UPSTREAM}/v1/audio/speech`, {
       method: 'POST',
       headers: { 'content-type': 'application/json; charset=utf-8' },
-      body: JSON.stringify(buildUpstreamBody(incoming, voice, streaming)),
+      body: JSON.stringify(buildUpstreamBody({ ...incoming, input }, voice, streaming)),
     });
   } catch (err) {
     fail(res, 502, `上游不可达:${err.message}`);

@@ -197,6 +197,10 @@ curl.exe http://127.0.0.1:8080/v1/audio/voices
 
 - **`cfg_value` / `inference_timesteps` / `max_steps` 无效。** 它们是 VoxCPM2 专有字段,
   代理会丢掉。面板上这三个旋钮在这个后端上不起作用。`seed` 与 `temperature` 照常透传。
+- **语气词只剩静默。** 扩展把 `[laughing]` / `[sigh]` 这类 VoxCPM2 行内标记当语音正文发出来,
+  用来触发一段真实笑声或叹息。base 模型没有对应机制(`instructions` 字段对 base 模型直接回
+  400),代理只能把标记剥掉,那一段因此变短、也听不出情绪。扩展仍按每个标记约 1.5 秒预算字幕
+  时间轴,所以带标签的句子字幕会略微提前。
 - **没有强制对齐。** 这个后端不带对齐模型,`/v1/audio/align` 固定回 501,扩展把片内
   `<>` 动作的时间退回按字符比例估计。要精确落点得另挂
   [Qwen3-ForcedAligner-0.6B](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B),

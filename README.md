@@ -27,13 +27,14 @@ llama-tts-server.exe(启动器,src/launcher)     │
 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 的 Job Object —— Windows 上扩展停止服务用
 `proc.kill()`,只作用于目标进程,靠 job 才能把子孙一起带走。
 
-## 代理抹平的三处差异
+## 代理抹平的四处差异
 
 | | 扩展要的 | qwentts 给的 | 代理做的事 |
 |---|---|---|---|
 | 流式 | chunked WAV,先读 44 字节头取采样率 | 裸 PCM | 补一个 24 kHz 单声道 16 bit 的头再边收边转 |
 | 声线 | 每次请求带 `reference_audio` + `prompt_text` | 注册制 | 按参考音频内容哈希注册并缓存;与部署声明那份相同就走预抽取的 `.spk`/`.rvq` |
 | 字段 | 会发 `cfg_value` / `inference_timesteps` / `max_steps` | 不认识 | 只转发 `seed` / `temperature` / `top_k` / `top_p` / `repetition_penalty` / `max_new_tokens` |
+| 语气词 | 语音正文里带 `[laughing]` / `[sigh]` 这类 VoxCPM2 行内标记 | 没有对应机制 | 转发前剥掉标记,笑声与叹息随之消失 |
 
 `/v1/audio/align` 固定回 501:这个后端没有强制对齐模型,扩展据此把片内动作退回按字符比例估计。
 
