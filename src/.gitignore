@@ -1,0 +1,3 @@
+# 装置文件:测试会按名找 src/<声线>-24k.spk|.rvq,tests/helpers/make-fixtures.mjs 生成
+test-voice-24k.spk
+test-voice-24k.rvq
