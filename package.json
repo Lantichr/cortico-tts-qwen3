@@ -1,0 +1,14 @@
+{
+  "name": "cortico-tts-qwen3",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把 Cortico vtuber World 的 VoxCPM2 形状 TTS 请求翻译给 qwentts.cpp 的 Qwen3-TTS",
+  "scripts": {
+    "pretest": "node tests/helpers/make-fixtures.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

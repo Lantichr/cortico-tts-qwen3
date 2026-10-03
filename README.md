@@ -59,6 +59,21 @@ node scripts/install.mjs `
 `/health` 和一次合成)。装完把 Cortico 的 `worlds.vtuber.ttsRuntimeDir` 指向运行时目录、
 `worlds.vtuber.ttsUrl` 指向代理端口即可。
 
+## 测试
+
+```
+npm test
+```
+
+用例不连网、不装依赖,起一个假上游,再把 `src/proxy.mjs` 拷进临时运行时目录跑一个真代理
+进程,所以不需要 qwentts 的可执行文件、GGUF 权重与 CUDA。
+
+装置要一份假参考音频与它的 `.spk`/`.rvq`,由 `tests/helpers/make-fixtures.mjs` 生成
+(`pretest` 会先跑它)。直接跑 `node --test` 就先跑一次生成。
+
+`tests/tts-live.test.mjs` 打的是**跑着的部署**(默认 `http://127.0.0.1:8010`,可用
+`CORTICO_TTS_URL` 改),核对剥标记在真后端上的效果。服务没起时整组跳过,不挡离线跑。
+
 ## 已知限制
 
 - **`cfg_value` / `inference_timesteps` / `max_steps` 在这个后端上不起作用。** 面板上它们

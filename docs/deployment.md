@@ -184,6 +184,7 @@ curl.exe http://127.0.0.1:8080/v1/audio/voices
 | 面板报「加载超时」 | 上游起不来。看运行日志 `server` 区域,通常是权重路径写错或 CUDA DLL 不在 PATH 上 |
 | 合成 502 `上游不可达` | 代理活着但上游退了。上游进程的 stderr 会进运行日志 |
 | 合成 400 `input is empty` | 正常:扩展每 30 秒用空 body 探一次流式路由,代理就地回 400 表示「路由在」 |
+| 合成 400 `input is empty after removing voice tags` | 正常:这一段只有 `[sigh]` 这类标记,剥完没有正文。扩展按失败段跳过 |
 | 启动器报 `launcher.ini 缺 <键>` | 配置少了必填项。重跑安装器 |
 | 代理报 `缺 QWEN_TTS_VOICE` | 手工起代理没给声线名。正常由启动器注入 |
 | 面板说端口被占 | 8010 上还有别的进程(比如旧的 VoxCPM2 server)。停掉它再启动 |
@@ -200,7 +201,9 @@ curl.exe http://127.0.0.1:8080/v1/audio/voices
 - **语气词只剩静默。** 扩展把 `[laughing]` / `[sigh]` 这类 VoxCPM2 行内标记当语音正文发出来,
   用来触发一段真实笑声或叹息。base 模型没有对应机制(`instructions` 字段对 base 模型直接回
   400),代理只能把标记剥掉,那一段因此变短、也听不出情绪。扩展仍按每个标记约 1.5 秒预算字幕
-  时间轴,所以带标签的句子字幕会略微提前。
+  时间轴,所以带标签的句子字幕会略微提前。`npm test` 里的
+  `tests/proxy-voice-tags.test.mjs` 守着这条:只有标记回 400,标记与正文同在时剥掉标记,
+  `[笑]` 这类中文方括号原样保留。
 - **没有强制对齐。** 这个后端不带对齐模型,`/v1/audio/align` 固定回 501,扩展把片内
   `<>` 动作的时间退回按字符比例估计。要精确落点得另挂
   [Qwen3-ForcedAligner-0.6B](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B),
