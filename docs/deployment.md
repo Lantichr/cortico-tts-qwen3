@@ -22,7 +22,7 @@
 | | 要求 | 说明 |
 |---|---|---|
 | GPU | 支持 CUDA,显存 ≥ 6 GB | 1.7B Q8_0 权重约占 2.2 GB,KV cache 与工作区另约 2 GB |
-| Node.js | ≥ 18 | 代理用内置 `fetch`,不装依赖 |
+| Node.js | ≥ 18 | 代理用内置 `fetch`,用例用 `node:test`,都不装依赖 |
 | CUDA Toolkit | 12.x | 提供 `nvcc` 与运行时的 cudart/cublas |
 | Visual Studio | BuildTools,含 C++ 工作负载 | 编 qwentts 与启动器。安装器用 `vswhere` 自己找 `vcvars64.bat`,任意年份都行 |
 | CMake + Ninja | 任意近期版本 | Ninja 用来绕开 CUDA 与新版 MSBuild 的集成问题 |
@@ -85,8 +85,8 @@ TTS 会照一段参考音频克隆音色与语调。准备一段 **24 kHz 单声
 <声线库>\myvoice.txt     它的逐字转写(与 wav 同名)
 ```
 
-转写不是可选的:带上它才是 ICL 克隆,音色与语调都跟着参考走;没有它只能退到纯克隆,
-保真度明显下降。
+转写不是可选的:代理注册声线时无条件读这份 `.txt`,缺了就对每次合成回 502。带上它才是
+ICL 克隆,音色与语调都跟着参考走;转写为空的注册只能退到纯克隆,保真度明显下降。
 
 参考音频是 32 kHz 或立体声就先用 ffmpeg 转:
 
@@ -94,7 +94,8 @@ TTS 会照一段参考音频克隆音色与语调。准备一段 **24 kHz 单声
 ffmpeg -i <原音频> -ar 24000 -ac 1 <声线库>\myvoice.wav
 ```
 
-再抽特征(NVMe 上约 3 秒):
+再抽特征(NVMe 上约 3 秒)。`qwen-codec` 按输入换扩展名输出,而安装器与代理只认
+`<声线名>-24k.spk` / `.rvq`,所以生成后改一次名(也可以用 `--spk` / `--rvq` 指原名):
 
 ```powershell
 $env:PATH = "<CUDA>\bin;$env:PATH"
@@ -103,10 +104,11 @@ cd <声线库>
   --model <权重目录>\qwen-tokenizer-12hz-Q8_0.gguf `
   --talker <权重目录>\qwen-talker-1.7b-base-Q8_0.gguf `
   -i myvoice.wav
+Rename-Item myvoice.spk myvoice-24k.spk
+Rename-Item myvoice.rvq myvoice-24k.rvq
 ```
 
-产出 `myvoice-24k.spk` 与 `myvoice-24k.rvq`。装的时候安装器会找这两个文件,先找声线库、
-再找运行时目录,也可以用 `--spk` / `--rvq` 直接指路径。
+装的时候安装器会找这两个文件,先找声线库、再找运行时目录。
 
 ## 第 4 步:安装本仓库
 
@@ -151,6 +153,10 @@ node scripts/install.mjs `
 | `worlds.vtuber.ttsUrl` | `http://127.0.0.1:8010`(代理端口) |
 | `worlds.vtuber.streamEnabled` | `true` |
 
+**VoxCPM2 的权重留在原地。** 扩展在 spawn 启动器之前就检查
+`<modelsDir>\VoxCPM2-BaseLM-F16.gguf` 与 `VoxCPM2-Acoustic-F16.gguf`,缺一个就不启动,即使
+launcher 与代理都不用它。
+
 `ttsUrl` 的**端口**就是代理要监听的端口。启动器会读扩展传进来的 `--port`,以它为准,
 所以这两处不会对不上;`launcher.ini` 里的 `proxy_port` 只是手工起代理时的默认值。
 
@@ -181,15 +187,17 @@ curl.exe http://127.0.0.1:8080/v1/audio/voices
 
 | 现象 | 原因 |
 |---|---|
-| 面板报「加载超时」 | 上游起不来。看运行日志 `server` 区域,通常是权重路径写错或 CUDA DLL 不在 PATH 上 |
+| 面板「[失败] 声音 启动超时」,详情「health 检查超时(模型加载过久或端口不对)」 | 启动器没起来或起得慢。看运行日志 `server` 区域:权重路径写错、缺 VoxCPM2 权重、CUDA DLL 不在 PATH 上都走这条 |
+| 面板报「缺文件(VoxCPM2 BaseLM/Acoustic)」 | 扩展要求这两个权重就在 `<modelsDir>\VoxCPM2-BaseLM-F16.gguf` 与 `VoxCPM2-Acoustic-F16.gguf`(本机 `E:\Cortico-Data\models\vtuber\`)。不摆齐,扩展不 spawn 启动器 |
+| 合成 502,正文是 `ENOENT ... <声线>.txt` | 声线库缺 `<声线名>.txt`。代理注册这条声线时无条件读它,读不到就对每次合成回 502;扩展把该段按失败跳过 |
 | 合成 502 `上游不可达` | 代理活着但上游退了。上游进程的 stderr 会进运行日志 |
 | 合成 400 `input is empty` | 正常:扩展每 30 秒用空 body 探一次流式路由,代理就地回 400 表示「路由在」 |
 | 合成 400 `input is empty after removing voice tags` | 正常:这一段只有 `[sigh]` 这类标记,剥完没有正文。扩展按失败段跳过 |
-| 重启服务后直连 `:8080` 回 `unknown voice '<声线>'` | 上游的注册表在内存里。经代理合成一次即可复现注册,之后直连才通 |
+| 重启服务后直连 `:8080` 回 `unknown voice '<声线>'` | 上游的注册表在内存里。经代理合成的**第二次**请求才重新注册(第一次让代理放掉缓存),之后直连才通 |
 | 启动器报 `launcher.ini 缺 <键>` | 配置少了必填项。重跑安装器 |
 | 代理报 `缺 QWEN_TTS_VOICE` | 手工起代理没给声线名。正常由启动器注入 |
-| 面板说端口被占 | 8010 上还有别的进程(比如旧的 VoxCPM2 server)。停掉它再启动 |
-| 声音是别人的 / 不像参考 | `.spk`/`.rvq` 与 `myvoice.wav` 不配对,或 `myvoice.txt` 缺失导致退到纯克隆 |
+| 面板说「演出流端口 <端口> 被占用,改用 <端口>」 | 这条属于演出流(弹幕/字幕),会自动顺延,不用管。TTS 端口被占的表现是启动超时那条:启动器退出,Cortico 收不到 health |
+| 声音是别人的 / 不像参考 | `.spk`/`.rvq` 与 `<声线名>.wav` 不配对,或 `launcher.ini` 的 `voice` 与声线库里的名字对不上 |
 | `spawn UNKNOWN` | Windows 智能应用控制拦下了未签名的 exe |
 
 上游崩过一次并留下 `GGML_ASSERT ... pool_used` 之类:CUDA 后端的已知脆弱点,连续快速
@@ -203,14 +211,12 @@ curl.exe http://127.0.0.1:8080/v1/audio/voices
   用来触发一段真实笑声或叹息。上游没有对应机制:标记原样送进去会被当正文合成成发声
   (同一句话 `[laughing] 今天天气不错。[sigh]` 直连上游 3.28 秒,去掉标记 1.84 秒);改用
   `instructions` 描述语气也不行,base 模型收到非空的该字段直接回 400。代理在转发前剥掉标记,
-  那一段因此变短、也听不出情绪;扩展仍按每个标记约 1.5 秒预算字幕时间轴,带标签的句子字幕会
-  略微提前。`npm test` 里的 `tests/proxy-voice-tags.test.mjs` 守着这条:只有标记回 400,标记
-  与正文同在时剥掉标记,`[笑]` 这类中文方括号原样保留。
+  那一段因此变短、也听不出情绪。`npm test` 里的 `tests/proxy-voice-tags.test.mjs` 守着这条:
+  只有标记回 400,标记与正文同在时剥掉标记,`[笑]` 这类中文方括号原样保留。
+- **带标记的句子字幕会偏后。** 扩展侧仍按每个标记约 1.5 秒的停顿先验排字幕,而代理剥掉标记后
+  音频里没有这段停顿,后一条字幕因此晚于声音。这个量级还没有对着实测核过。
 - **没有强制对齐。** 这个后端不带对齐模型,`/v1/audio/align` 固定回 501,扩展把片内
-  `<>` 动作的时间退回按字符比例估计。要精确落点得另挂
-  [Qwen3-ForcedAligner-0.6B](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B),
-  而承载它的 `llama-tts-server`(Phantivia 的 llama.cpp-omni fork)不肯在缺 VoxCPM2 权重的
-  情况下启动,代价不小。
+  `<>` 动作的时间退回按字符比例估计。
 - **Q8_0 是这套配置的取舍点。** 更高精度更稳但更占显存。上游自己的调优开关走
   `launcher.ini` 的 `extra_args`(安装时用 `--extra-args`),原样追加到上游命令行,
   例如 `--max-batch 2`、`--clamp-fp16`、`--no-fa`;能不能用取决于你的上游版本。

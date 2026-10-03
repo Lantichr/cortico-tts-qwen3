@@ -32,7 +32,7 @@ llama-tts-server.exe(启动器,src/launcher)     │
 | | 扩展要的 | qwentts 给的 | 代理做的事 |
 |---|---|---|---|
 | 流式 | chunked WAV,先读 44 字节头取采样率 | 裸 PCM | 补一个 24 kHz 单声道 16 bit 的头再边收边转 |
-| 声线 | 每次请求带 `reference_audio` + `prompt_text` | 注册制 | 按参考音频内容哈希注册并缓存;与部署声明那份相同就走预抽取的 `.spk`/`.rvq` |
+| 声线 | 带参考音频时发 `reference_audio`,转写非空再带 `prompt_text` | 注册制 | 按参考音频内容哈希注册并缓存;与部署声明那份相同就走预抽取的 `.spk`/`.rvq` |
 | 字段 | 会发 `cfg_value` / `inference_timesteps` / `max_steps` | 不认识 | 只转发 `seed` / `temperature` / `top_k` / `top_p` / `repetition_penalty` / `max_new_tokens` |
 | 语气词 | 语音正文里带 `[laughing]` / `[sigh]` 这类 VoxCPM2 行内标记 | 没有对应机制 | 转发前剥掉标记,笑声与叹息随之消失 |
 
@@ -66,10 +66,9 @@ npm test
 ```
 
 用例不连网、不装依赖,起一个假上游,再把 `src/proxy.mjs` 拷进临时运行时目录跑一个真代理
-进程,所以不需要 qwentts 的可执行文件、GGUF 权重与 CUDA。
-
-装置要一份假参考音频与它的 `.spk`/`.rvq`,由 `tests/helpers/make-fixtures.mjs` 生成
-(`pretest` 会先跑它)。直接跑 `node --test` 就先跑一次生成。
+进程,所以不需要 qwentts 的可执行文件、GGUF 权重与 CUDA。装置声线(假参考音频与它的
+`.spk`/`.rvq`)由 `tests/helpers/make-fixtures.mjs` 生成:`npm test` 的 `pretest` 会跑它,
+单独跑 `node --test` 要先手工跑一次。这些假特征文件落在 `src/` 下并由 `src/.gitignore` 忽略。
 
 `tests/tts-live.test.mjs` 打的是**跑着的部署**(默认 `http://127.0.0.1:8010`,可用
 `CORTICO_TTS_URL` 改),核对剥标记在真后端上的效果。服务没起时整组跳过,不挡离线跑。
@@ -79,7 +78,11 @@ npm test
 - **`cfg_value` / `inference_timesteps` / `max_steps` 在这个后端上不起作用。** 面板上它们
   看着像能调,实际会被代理丢掉。`seed` 与 `temperature` 照常透传。
 - **没有强制对齐**,所以 `alignEnabled` 开着时每片会记一条 501。
-- **参考音频必须是 24 kHz 单声道**才能抽 `.spk`/`.rvq`。
+- **参考音频必须是 24 kHz 单声道**才能抽 `.spk`/`.rvq`;特征文件要叫 `<声线名>-24k.spk` /
+  `.rvq`,而 `qwen-codec` 按输入换扩展名输出,生成后改一次名。
+- **扩展仍要求 VoxCPM2 的两个权重在场**(`VoxCPM2-BaseLM-F16.gguf` 与
+  `VoxCPM2-Acoustic-F16.gguf`),缺一个就不 spawn 启动器。它们不参与这套后端的工作。
+- **声线库缺 `<声线名>.txt` 时每次合成回 502。** 代理注册声线时无条件读它,扩展按失败段跳过。
 
 ## 许可
 

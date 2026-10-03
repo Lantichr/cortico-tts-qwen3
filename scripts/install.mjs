@@ -114,7 +114,8 @@ if (!existsSync(voiceWav)) {
   process.exit(2);
 }
 if (!existsSync(voiceTxt)) {
-  console.warn(`[警告] 没有 ${voice}.txt。缺参考转写时上游只能走纯克隆,音色与语调的保真度会下降。`);
+  console.warn(`[警告] 没有 ${voice}.txt。代理注册声线时要读它,读不到就对每次合成回 502,`);
+  console.warn('       音色与语调的保真度也依赖这份转写。');
 }
 
 mkdirSync(runtime, { recursive: true });
