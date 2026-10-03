@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { post, wavSeconds } from './helpers/proxy-harness.mjs';
 
 const TARGET = process.env.CORTICO_TTS_URL ?? 'http://127.0.0.1:8010';
+/** 单句合成实测约 1–2 秒(含首次合成的权重预热),这里给一个数量级的余量 */
 const CASE_TIMEOUT_MS = 30_000;
 
 /** 服务不在就跳过:用例的价值在于对着真后端跑,而不在于原地失败 */
